@@ -53,8 +53,10 @@ def process_transcriptions(
     client = genai.Client(api_key=api_key)
     
     # Process each dataset folder
-    for dataset_folder in ['TXB805']:
+    for dataset_folder in transcriptions_dir.iterdir():
         if not dataset_folder.is_dir():
+            continue
+        if dataset_folder.name!= 'TXB805':
             continue
             
         print(f"Processing dataset: {dataset_folder.name}")
@@ -98,7 +100,7 @@ def process_transcriptions(
                     json.dump(embedding_data, f, ensure_ascii=False, indent=2)
                 
                 # Sleep for 10 seconds to avoid rate limits
-                time.sleep(60)
+                time.sleep(30)
                     
             except Exception as e:
                 print(f"Error processing {json_file}: {str(e)}")
