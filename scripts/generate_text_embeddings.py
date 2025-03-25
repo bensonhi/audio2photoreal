@@ -83,6 +83,7 @@ def process_transcriptions(
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 
                 # Store embedding along with original text
+                print(embedding_data)
                 embedding_data = {
                     "text": text,
                     "embedding": embedding_result.data[0].to_dict(),
