@@ -82,10 +82,13 @@ def process_transcriptions(
                 # Ensure output directory exists
                 output_file.parent.mkdir(parents=True, exist_ok=True)
                 
+                # Extract embedding values into a list
+                embedding_values = embedding_result.embeddings[0].values
+                
                 # Store embedding along with original text
                 embedding_data = {
                     "text": text,
-                    "embedding": embedding_result.embeddings,
+                    "embedding": embedding_values,
                     "original_transcription_path": str(json_file)
                 }
                 
