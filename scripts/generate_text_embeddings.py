@@ -86,7 +86,7 @@ def process_transcriptions(
                 print(embedding_result)
                 embedding_data = {
                     "text": text,
-                    "embedding": embedding_result.data[0].to_dict(),
+                    "embedding": embedding_result.embeddings[0].to_dict(),
                     "original_transcription_path": str(json_file)
                 }
                 
