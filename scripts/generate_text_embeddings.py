@@ -56,8 +56,6 @@ def process_transcriptions(
     for dataset_folder in transcriptions_dir.iterdir():
         if not dataset_folder.is_dir():
             continue
-        if dataset_folder.name!= 'TXB805':
-            continue
             
         print(f"Processing dataset: {dataset_folder.name}")
         dataset_output_dir = output_dir / dataset_folder.name
@@ -100,7 +98,7 @@ def process_transcriptions(
                     json.dump(embedding_data, f, ensure_ascii=False, indent=2)
                 
                 # Sleep for 10 seconds to avoid rate limits
-                time.sleep(30)
+                time.sleep(60)
                     
             except Exception as e:
                 print(f"Error processing {json_file}: {str(e)}")
