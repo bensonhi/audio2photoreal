@@ -1,6 +1,7 @@
 import os
 import json
 import argparse
+import time
 from pathlib import Path
 from tqdm import tqdm
 from google import genai
@@ -95,6 +96,9 @@ def process_transcriptions(
                 # Save embedding
                 with open(output_file, 'w', encoding='utf-8') as f:
                     json.dump(embedding_data, f, ensure_ascii=False, indent=2)
+                
+                # Sleep for 10 seconds to avoid rate limits
+                time.sleep(10)
                     
             except Exception as e:
                 print(f"Error processing {json_file}: {str(e)}")
