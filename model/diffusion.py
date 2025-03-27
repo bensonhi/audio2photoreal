@@ -105,6 +105,10 @@ class FiLMTransformer(nn.Module):
         self.data_format = args.data_format
         self.split_type = split_type
         self.device = device
+        
+        # Add text embedding config
+        self.use_text_embedding = getattr(args, "use_text_embedding", True)
+        self.text_embedding_dim = getattr(args, "text_embedding_dim", 3072)  # Gemini embedding dimension
 
         # positional embeddings
         self.rotary = None
@@ -137,6 +141,13 @@ class FiLMTransformer(nn.Module):
         self.null_cond_embed = nn.Parameter(torch.randn(1, emb_len, latent_dim))
         self.null_cond_hidden = nn.Parameter(torch.randn(1, latent_dim))
         self.norm_cond = nn.LayerNorm(latent_dim)
+        
+        # Text embedding conditioning 
+        if self.use_text_embedding:
+            self.null_text_embed = nn.Parameter(torch.randn(1, self.text_embedding_dim))
+            self.text_projection = nn.Linear(self.text_embedding_dim, latent_dim)
+            self.text_norm = nn.LayerNorm(latent_dim)
+        
         self.setup_audio_models()
 
         # set up pose/face specific parts of the model
@@ -360,6 +371,33 @@ class FiLMTransformer(nn.Module):
             if self.data_format == "pose":
                 pose_tokens = self.encode_keyframes(y, cond_drop_prob, batch_size)
         assert cond_embed is not None, "cond emb should not be none"
+        
+        # Add text embedding conditioning
+        text_conditioning = None
+        if self.use_text_embedding and "text_embedding" in y:
+            text_embedding = y["text_embedding"]
+            # Process text embedding if it's per-frame
+            if text_embedding.dim() == 3:  # [batch, seq_len, embedding_dim]
+                # Average over time dimension to get a single embedding per batch
+                text_embedding = text_embedding.mean(dim=1)
+            
+            # Apply dropout for classifier-free guidance
+            text_cond_drop_prob = cond_drop_prob
+            keep_mask_text = prob_mask_like(
+                (batch_size,), 1 - text_cond_drop_prob, device=device
+            )
+            keep_mask_text_embed = rearrange(keep_mask_text, "b -> b 1")
+            
+            # Project text embedding to latent dimension
+            text_conditioning = self.text_projection(text_embedding)
+            text_conditioning = self.text_norm(text_conditioning)
+            
+            # Replace with null embedding based on mask
+            null_text_embed = self.null_text_embed.to(text_conditioning.dtype)
+            text_conditioning = torch.where(
+                keep_mask_text_embed, text_conditioning, null_text_embed
+            )
+            
         # process conditioning information
         x = self.input_projection(x)
         x = self.abs_pos_encoding(x)
@@ -379,6 +417,10 @@ class FiLMTransformer(nn.Module):
         )
         mean_pooled_cond_tokens = cond_tokens.mean(dim=-2)
         cond_hidden = self.non_attn_cond_projection(mean_pooled_cond_tokens)
+        
+        # Combine text conditioning with audio conditioning
+        if text_conditioning is not None:
+            cond_hidden = cond_hidden + text_conditioning
 
         # create t conditioning
         t_hidden = self.time_mlp(times)

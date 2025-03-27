@@ -39,6 +39,14 @@ def collate_v2(batch):
     alenbatch = [b["audio_lengths"] for b in notnone_batches]
     keyframebatch = [b["keyframes"] for b in notnone_batches]
     klenbatch = [b["key_lengths"] for b in notnone_batches]
+    
+    # Handle text embeddings if available
+    if "text_embedding" in notnone_batches[0]:
+        text_embedding_batch = [b["text_embedding"] for b in notnone_batches]
+        text_embedding_len_batch = [b["text_embedding_lengths"] for b in notnone_batches]
+        has_text_embeddings = True
+    else:
+        has_text_embeddings = False
 
     databatchTensor = collate_tensors(databatch)
     missingbatchTensor = collate_tensors(missingbatch)
@@ -47,6 +55,11 @@ def collate_v2(batch):
     alenbatchTensor = torch.as_tensor(alenbatch)
     keyframeTensor = collate_tensors(keyframebatch)
     klenbatchTensor = torch.as_tensor(klenbatch)
+    
+    # Collate text embeddings if available
+    if has_text_embeddings:
+        text_embedding_tensor = collate_tensors(text_embedding_batch)
+        text_embedding_len_tensor = torch.as_tensor(text_embedding_len_batch)
 
     maskbatchTensor = (
         lengths_to_mask(lenbatchTensor, databatchTensor.shape[-1])
@@ -65,12 +78,19 @@ def collate_v2(batch):
             "klengths": klenbatchTensor,
         }
     }
+    
+    # Add text embeddings to condition dict if available
+    if has_text_embeddings:
+        cond["y"]["text_embedding"] = text_embedding_tensor
+        cond["y"]["text_embedding_lengths"] = text_embedding_len_tensor
+        
     return motion, cond
 
 
 def social_collate(batch):
-    adapted_batch = [
-        {
+    adapted_batch = []
+    for b in batch:
+        item = {
             "inp": torch.tensor(b["motion"].T).to(torch.float32).unsqueeze(1),
             "lengths": b["m_length"],
             "audio": b["audio"]
@@ -81,6 +101,12 @@ def social_collate(batch):
             "audio_lengths": b["a_length"],
             "missing": torch.tensor(b["missing"]).to(torch.float32),
         }
-        for b in batch
-    ]
+        
+        # Add text embedding if available
+        if "text_embedding" in b:
+            item["text_embedding"] = torch.tensor(b["text_embedding"]).to(torch.float32)
+            item["text_embedding_lengths"] = b["t_length"]
+            
+        adapted_batch.append(item)
+        
     return collate_v2(adapted_batch)

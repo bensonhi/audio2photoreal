@@ -94,6 +94,7 @@ class Social(data.Dataset):
         self.data = np.take(data_dict["data"], idx, axis=0)
         self.missing = np.take(data_dict["missing"], idx, axis=0)
         self.audio = np.take(data_dict["audio"], idx, axis=0)
+        self.text_embeddings = np.take(data_dict["text_embeddings"], idx, axis=0)
         self.lengths = np.take(data_dict["lengths"], idx, axis=0)
         self.total_len = sum([len(d) for d in self.data])
 
@@ -108,17 +109,28 @@ class Social(data.Dataset):
         self.face_std = stats["code_std"]
         self.audio_mean = stats["audio_mean"]
         self.audio_std = stats["audio_std_flat"]
+        # We don't normalize text embeddings as they are already normalized
+        self.text_embedding_mean = 0
+        self.text_embedding_std = 1
 
     def _chunk_data(self) -> None:
         chunk_data = []
         chunk_missing = []
         chunk_lengths = []
         chunk_audio = []
+        chunk_text_embeddings = []
         # create sequences of set lengths
         for d_idx in range(len(self.data)):
             curr_data = self.data[d_idx]
             curr_missing = self.missing[d_idx]
             curr_audio = self.audio[d_idx]
+            
+            # Get text embedding if available
+            if self.text_embeddings is not None:
+                curr_text_embedding = self.text_embeddings[d_idx]
+            else:
+                curr_text_embedding = None
+                
             end_range = len(self.data[d_idx]) - self.max_seq_length
             for chunk_idx in range(0, end_range, self.max_seq_length):
                 chunk_end = chunk_idx + self.max_seq_length
@@ -128,6 +140,11 @@ class Social(data.Dataset):
                     chunk_idx * self.audio_per_frame : chunk_end * self.audio_per_frame,
                     :,
                 ]
+                
+                # Chunk text embedding if available
+                if curr_text_embedding is not None:
+                    curr_text_embedding_chunk = curr_text_embedding[chunk_idx:chunk_end, :]
+                
                 if curr_data_chunk.shape[0] < self.max_seq_length:
                     # do not add a short chunk to the list
                     continue
@@ -135,12 +152,22 @@ class Social(data.Dataset):
                 chunk_data.append(curr_data_chunk)
                 chunk_missing.append(curr_missing_chunk)
                 chunk_audio.append(curr_audio_chunk)
+                
+                # Add chunked text embedding
+                if curr_text_embedding is not None:
+                    chunk_text_embeddings.append(curr_text_embedding_chunk)
+                
         idx = np.random.permutation(len(chunk_data))
         print("==> shuffle", idx)
         self.data = np.take(chunk_data, idx, axis=0)
         self.missing = np.take(chunk_missing, idx, axis=0)
         self.lengths = np.take(chunk_lengths, idx, axis=0)
         self.audio = np.take(chunk_audio, idx, axis=0)
+        
+        # Shuffle text embeddings if available
+        if self.text_embeddings is not None and len(chunk_text_embeddings) > 0:
+            self.text_embeddings = np.take(chunk_text_embeddings, idx, axis=0)
+            
         self.total_len = len(self.data)
 
     def _register_keyframe_step(self) -> None:
@@ -193,9 +220,19 @@ class Social(data.Dataset):
             start * self.audio_per_frame : (start + length) * self.audio_per_frame,
             :,
         ]
+        
+        # Get text embedding for the same section
+        if data_dict.get("text_embedding") is not None:
+            text_embedding = data_dict["text_embedding"][start : start + length, :]
+        else:
+            text_embedding = None
+            
         data_dict["m_length"] = len(motion)
         data_dict["k_length"] = len(keyframes)
         data_dict["a_length"] = len(audio)
+        
+        if text_embedding is not None:
+            data_dict["t_length"] = len(text_embedding)
 
         if data_dict["m_length"] < self.max_seq_length:
             motion = self._pad_sequence(
@@ -211,10 +248,18 @@ class Social(data.Dataset):
             keyframes = self._pad_sequence(
                 keyframes, data_dict["k_length"], max_step_length
             )
+            
+            if text_embedding is not None:
+                text_embedding = self._pad_sequence(
+                    text_embedding, data_dict["t_length"], self.max_seq_length
+                )
+                
         data_dict["motion"] = motion
         data_dict["keyframes"] = keyframes
         data_dict["audio"] = audio
         data_dict["missing"] = missing
+        if text_embedding is not None:
+            data_dict["text_embedding"] = text_embedding
         return data_dict
 
     def __len__(self) -> int:
@@ -229,6 +274,15 @@ class Social(data.Dataset):
         m_length = self.lengths[item]
         missing = self.missing[item]
         a_length = len(audio)
+        
+        # Get text embedding if available
+        if self.text_embeddings is not None:
+            text_embedding = self.text_embeddings[item]
+            t_length = len(text_embedding)
+        else:
+            text_embedding = None
+            t_length = 0
+            
         # Z Normalization
         if self.data_format == "pose":
             motion = (motion - self.mean) / self.std
@@ -246,6 +300,12 @@ class Social(data.Dataset):
             "k_length": k_length,
             "missing": missing,
         }
+        
+        # Add text embedding to data_dict if available
+        if text_embedding is not None:
+            data_dict["text_embedding"] = text_embedding
+            data_dict["t_length"] = t_length
+            
         if not self.split == "test" and not self.chunk:
             data_dict = self._get_random_subsection(data_dict)
         if self.data_format == "face":

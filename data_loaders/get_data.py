@@ -12,6 +12,7 @@ from typing import Dict, List
 import numpy as np
 import torch
 import torchaudio
+import json
 from data_loaders.data import Social
 from data_loaders.tensors import social_collate
 from torch.utils.data import DataLoader
@@ -50,6 +51,7 @@ def _load_pose_data(
     data = []
     face = []
     audio = []
+    text_embeddings = []
     lengths = []
     missing = []
     for _, curr_path_name in enumerate(all_paths):
@@ -90,17 +92,37 @@ def _load_pose_data(
         assert len(curr_pose) * audio_per_frame == len(
             curr_audio
         ), f"motion {curr_pose.shape} vs audio {curr_audio.shape}"
+        
+        # Load text embedding if available
+        embedding_path = curr_path_name.replace("_body_pose.npy", "_audio.embedding.json")
+        if os.path.exists(embedding_path):
+            try:
+                with open(embedding_path, 'r') as f:
+                    embedding_data = json.load(f)
+                curr_text_embedding = np.array(embedding_data["embedding"], dtype=np.float32)
+                # Repeat the embedding to match the number of frames
+                curr_text_embedding = np.tile(curr_text_embedding, (len(curr_pose), 1))
+            except Exception as e:
+                print(f"Error loading embedding {embedding_path}: {e}")
+                # Create a zero embedding if loading fails
+                curr_text_embedding = np.zeros((len(curr_pose), 3072), dtype=np.float32)  # Gemini embedding size
+        else:
+            # Create a zero embedding if file doesn't exist
+            curr_text_embedding = np.zeros((len(curr_pose), 3072), dtype=np.float32)  # Gemini embedding size
+            print(f"No embedding found for {curr_path_name}, using zeros")
 
         data.append(curr_pose)
         face.append(curr_code)
         missing.append(curr_missing)
         audio.append(curr_audio)
+        text_embeddings.append(curr_text_embedding)
         lengths.append(len(curr_pose))
 
     data_dict = {
         "data": data,
         "face": face,
         "audio": audio,
+        "text_embeddings": text_embeddings,
         "lengths": lengths,
         "missing": missing,
     }

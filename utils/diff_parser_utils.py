@@ -147,6 +147,20 @@ def add_model_options(parser):
     group.add_argument("--not_rotary", action="store_true")
     group.add_argument("--simplify_audio", action="store_true")
     group.add_argument("--add_frame_cond", type=float, choices=[1], default=None)
+    
+    # Text embedding options
+    group.add_argument(
+        "--use_text_embedding", 
+        action="store_true",
+        default=True,
+        help="Use text embeddings as additional conditioning"
+    )
+    group.add_argument(
+        "--text_embedding_dim", 
+        default=3072, 
+        type=int, 
+        help="Dimension of the text embeddings (Gemini default is 3072)"
+    )
 
 
 def add_data_options(parser):
