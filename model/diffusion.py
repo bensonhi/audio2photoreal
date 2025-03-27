@@ -393,9 +393,11 @@ class FiLMTransformer(nn.Module):
             text_conditioning = self.text_norm(text_conditioning)
             
             # Replace with null embedding based on mask
-            null_text_embed = self.null_text_embed.to(text_conditioning.dtype)
+            # Create a projected version of the null embedding to match dimensions
+            null_text_projected = self.text_projection(self.null_text_embed).to(text_conditioning.dtype)
+            null_text_projected = self.text_norm(null_text_projected)
             text_conditioning = torch.where(
-                keep_mask_text_embed, text_conditioning, null_text_embed
+                keep_mask_text_embed, text_conditioning, null_text_projected
             )
             
         # process conditioning information
